@@ -107,7 +107,7 @@ jobs:
               env: "CYD-2432W328C_2",
               family: "ESP32",
               partitions: { bootloader_addr: "0x1000" },
-            }            
+            }
           - {
               vendor: "CYD",
               name: "CYD-2432W328R or 2432S024R",
@@ -201,11 +201,11 @@ jobs:
           key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
           restore-keys: |
             ${{ runner.os }}-pip-
-            
+
       - name: Install dependencies
-        run: | 
+        run: |
           pip install requests esptool
-              
+
       - name: Cache PlatformIO
         uses: actions/cache@v4
         with:
@@ -298,7 +298,7 @@ jobs:
       - name: Clone Bruce repository and switch to WebPage branch
         run: |
           git fetch origin
-          git checkout WebPage || git checkout -b WebPage origin/WebPage
+          git checkout WebPage || git checkout -b WebPage
       - name: Generate HTML and manifests from Boards
         run: |
           # Variáveis para armazenar os conteúdos dos arquivos específicos
