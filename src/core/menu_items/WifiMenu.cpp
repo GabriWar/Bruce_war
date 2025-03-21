@@ -51,7 +51,7 @@ void WifiMenu::optionsMenu() {
     options.emplace_back("DPWO", [=]()          { dpwo_setup(); });
     options.emplace_back("Raw Sniffer", [=]()   { sniffer_setup(); });
     options.emplace_back("Scan Hosts", [=]()    { local_scan_setup(); });
-    options.emplace_back("Scan Hosts", [=]()    { scanForPrinters(); });
+    options.emplace_back("Scan Printers", [=]()    { scanForPrinters(); });
     options.emplace_back("Wireguard", [=]()     { wg_setup(); });
     options.emplace_back("Brucegotchi",  [=]()   { brucegotchi_start(); });
 #endif

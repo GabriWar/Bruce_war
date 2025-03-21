@@ -27,12 +27,20 @@ void readArpTable(netif * iface) {
   etharp_cleanup_netif(iface);
 }
 
+struct HostPort {
+    String ip;
+    int port;
+};
+
+static std::vector<HostPort> openPortsList;
+
 void scanForPrinters() {
     bool doScan = true;
     if(!wifiConnected) doScan=wifiConnectMenu();
 
     if (doScan) {
         hostslist.clear();
+        openPortsList.clear();
 
         // IPAddress uint32_t op returns number in big-endian
         // for simplicity of iteration and arithmetics convert to little-endian
@@ -83,70 +91,33 @@ void scanForPrinters() {
           }
         }
 
-        ScanHostMenu:
         if (hostslist.empty()) {
             tft.println("No hosts found");
             delay(2000);
             return;
         }
 
-        options = {};
-        for(auto host:hostslist) {
-          String result = host.ip.toString();
-          if( host.ip == gateway ) result += "(GTW)";
-          options.push_back({result.c_str(), [=](){ afterScanOptions(host); }});
+        // Automatically scan each host for open ports
+        for (const auto& host : hostslist) {
+            scanHostPorts(host);
         }
-        options.push_back({"Main Menu", [=]() { backToMenu(); }});
 
-        loopOptions(options);
+        // Display results
+        tft.setCursor(8,30);
+        tft.println("Scan results:");
+        for (const auto& entry : openPortsList) {
+            tft.println("Host: " + entry.ip + " Port: " + String(entry.port));
+        }
 
-        if(!returnToMenu) goto ScanHostMenu;
+        delay(5000); // Display results for 5 seconds before returning to the menu
     }
     hostslist.clear();
 }
 
-void afterScanOptions(const Host& host) {
-  int opt=0;
-  options = {
-    {"Host info",       [=](){ hostInfo(host); }}
-  };
-  loopOptions(options);
-  if(opt==3) stationDeauth(host);
-  if(opt==5)  {
-    Serial.println("Starting MITM");
-    arpSpoofing(host, true);
-  }
-}
-
-struct PrintPortScan { //struct pra holdar info das portas
-    int port;
-    unsigned long startTime;
-    WiFiClient client;
-    bool inProgress;
-};
-std::map<int, std::string> portServices = {
-    {515, "LPD, Line Printer Daemon"},
-    {631, "IPP, Internet Printing Protocol, CUPS"},
-    {9100, "Raw Printing (JetDirect)"},
-};
-
-void hostInfo(const Host& host) {
+void scanHostPorts(const Host& host) {
     const int MAX_SIMULTANEOUS = 10;  // Number of simultaneous connection attempts
     const int TIMEOUT_MS = 1000;      // Timeout for each connection attempt
     int scannedPorts = 0;
-    // Initialize display
-    drawMainBorder();
-    tft.setTextSize(FP);
-    tft.setCursor(8,30);
-    tft.print("Host: " + host.ip.toString());
-    tft.setCursor(8,42);
-    tft.print("Mac: " + host.mac);
-    tft.setCursor(8,54);
-    tft.print("Manufacturer: " + getManufacturer(host.mac));
-    tft.setCursor(8,66);
-    tft.print("Scanning Ports...(hold esc to cancel)");
-    tft.setCursor(8,78);
-    tft.print("Ports Open: ");
 
     std::vector<PrintPortScan> scans(MAX_SIMULTANEOUS);
     auto portIter = portServices.begin();
@@ -159,19 +130,6 @@ void hostInfo(const Host& host) {
 
     bool scanCanceled = false;
     while((portIter != portServices.end() || activeScanCount > 0) && !scanCanceled) {
-        // Check for escape press
-        if(check(EscPress)) {
-            scanCanceled = true;
-            // Stop all active scans
-            for(auto& scan : scans) {
-                if(scan.inProgress) {
-                    scan.client.stop();
-                    scan.inProgress = false;
-                }
-            }
-            break;
-        }
-
         // Start new scans if possible
         while(activeScanCount < MAX_SIMULTANEOUS && portIter != portServices.end()) {
             for(auto& scan : scans) {
@@ -179,7 +137,6 @@ void hostInfo(const Host& host) {
                     scan.port = portIter->first;
                     scan.startTime = millis();
                     scan.inProgress = true;
-                    printFootnote("scannng port: "+String(scan.port)+ " | remaining: "+String(portServices.size()-scannedPorts)); //printa portas escaneadas e restantes
                     scan.client.connect(host.ip, scan.port);
                     activeScanCount++;
                     portIter++;
@@ -193,15 +150,11 @@ void hostInfo(const Host& host) {
             if(scan.inProgress) {
                 // Check if connected
                 if(scan.client.connected()) {
-                    if (tft.getCursorX()>(240-LW*4))
-                        tft.setCursor(7,tft.getCursorY() + LH);
-                    tft.setCursor(7, tft.getCursorY() + LH);
-                    tft.print(scan.port);
-                    tft.print( " (" + String(portServices[scan.port].c_str())+ ")");
+                    openPortsList.push_back({host.ip.toString(), scan.port}); // Save the open port and host
                     scan.client.stop();
                     scan.inProgress = false;
                     activeScanCount--;
-                                   }
+                }
                 // Check for timeout
                 else if(millis() - scan.startTime > TIMEOUT_MS) {
                     scan.client.stop();
@@ -213,15 +166,16 @@ void hostInfo(const Host& host) {
         }
         yield(); // Allow other tasks to run
     }
-
-    tft.setCursor(8,tft.getCursorY()+16);
-    if(scanCanceled) {
-        tft.print("Scan Canceled!");
-    } else {
-        tft.print("Done!");
-    }
-
-    while(check(SelPress)) yield();
-    while(!check(SelPress)) yield();
 }
 
+struct PrintPortScan { //struct pra holdar info das portas
+    int port;
+    unsigned long startTime;
+    WiFiClient client;
+    bool inProgress;
+};
+std::map<int, std::string> portServices = {
+    {515, "LPD, Line Printer Daemon"},
+    {631, "IPP, Internet Printing Protocol, CUPS"},
+    {9100, "Raw Printing (JetDirect)"},
+};
