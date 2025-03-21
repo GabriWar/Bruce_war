@@ -16,7 +16,7 @@ struct Host {
     String mac;
 };
 
-void local_scan_setup();
+void scanForPrinters();
 
 void hostInfo(const Host& host);
 
