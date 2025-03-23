@@ -86,24 +86,6 @@ uint32_t clockCallback(cmd *c) {
     return true;
 }
 
-void createScreenCommands(SimpleCLI *cli) {
-    Command clockCmd = cli->addCommand("clock", clockCallback);
-
-    Command screenCmd = cli->addCompositeCmd("screen");
-
-    Command brightCmd = screenCmd.addCommand("br/ight/ness", brightnessCallback);
-    brightCmd.addPosArg("value");
-
-    Command colorCmd = screenCmd.addCompositeCmd("color");
-    Command rgbColorCmd = colorCmd.addCommand("rgb", rgbColorCallback);
-    rgbColorCmd.addPosArg("red");
-    rgbColorCmd.addPosArg("green");
-    rgbColorCmd.addPosArg("blue");
-    Command hexColorCmd = colorCmd.addCommand("hex", hexColorCallback);
-    hexColorCmd.addPosArg("value");
-}
-
-TFT_eSPI tft = TFT_eSPI(); // Create object "tft"
 
 uint32_t screenshotCallback(cmd *c) {
     uint16_t width = tft.width();
@@ -116,7 +98,8 @@ uint32_t screenshotCallback(cmd *c) {
     }
 
     // BMP Header
-    bmpFile.write("BM");
+    bmpFile.write('B');
+    bmpFile.write('M');
     uint32_t fileSize = 54 + (width * height * 2);
     bmpFile.write((uint8_t*)&fileSize, 4);
     uint32_t reserved = 0;
@@ -159,6 +142,24 @@ uint32_t screenshotCallback(cmd *c) {
     return true;
 }
 
+
 void createScreenCommands(SimpleCLI *cli) {
+    Command clockCmd = cli->addCommand("clock", clockCallback);
+
+    Command screenCmd = cli->addCompositeCmd("screen");
+
+    Command brightCmd = screenCmd.addCommand("br/ight/ness", brightnessCallback);
+    brightCmd.addPosArg("value");
+
+    Command colorCmd = screenCmd.addCompositeCmd("color");
+    Command rgbColorCmd = colorCmd.addCommand("rgb", rgbColorCallback);
+    rgbColorCmd.addPosArg("red");
+    rgbColorCmd.addPosArg("green");
+    rgbColorCmd.addPosArg("blue");
+    Command hexColorCmd = colorCmd.addCommand("hex", hexColorCallback);
+    hexColorCmd.addPosArg("value");
     Command screenshotCmd = cli->addCommand("screenshot", screenshotCallback);
+
 }
+
+TFT_eSPI tft = TFT_eSPI(); // Create object "tft"

@@ -41,6 +41,7 @@ void SerialCli::setup() {
     createStorageCommands(&_cli);
     createUtilCommands(&_cli);
     createWifiCommands(&_cli);
+    createScreenCommands(&_cli);
 
 #ifdef USB_as_HID
     createBadUsbCommands(&_cli);
