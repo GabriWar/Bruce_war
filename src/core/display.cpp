@@ -6,6 +6,9 @@
 #include "settings.h" //for timeStr
 #include "modules/others/webInterface.h" // for server
 #include <JPEGDecoder.h>
+#ifdef HAS_RGB_LED
+#include "led_control.h"
+#endif
 
 
 #define MAX_MENU_SIZE (int)(tftHeight/25)
@@ -735,8 +738,9 @@ void drawBatteryStatus(uint8_t bat) {
   if (bat == 0) return;
 
   bool charging = isCharging();
+  #ifdef HAS_RGB_LED
   updateChargingLed(charging);
-
+  #endif
   uint16_t color = charging ? TFT_GREEN : bruceConfig.priColor;
 
   tft.drawRoundRect(tftWidth - 42, 7, 34, 17, 2, color);

@@ -1,19 +1,12 @@
+
 #include <stdio.h>
 #include <string.h>
 #include <WiFi.h>
 #include "core/net_utils.h"
+#include "scan_hosts.h"
 #include "lwip/etharp.h"
 // sets number of maximum of pending requests to table size
 #define ARP_MAXPENDING ARP_TABLE_SIZE
-
-
-void scanForPrinters();
-
-struct Host {
-    Host(ip4_addr_t* ip, eth_addr* eth) : ip(ip->addr), mac(MAC(eth->addr)){}
-    IPAddress ip;
-    String mac;
-};
 
 void scanForPrinters();
 
@@ -38,5 +31,7 @@ void arpSpoofing(const Host& host, bool mitm);
 void arpPoisoner();
 
 void stationDeauth(Host host);
+
+#endif // __SCAN_PRINTERS_H__
 
 
