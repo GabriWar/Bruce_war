@@ -563,7 +563,7 @@ void BruceConfig::setLedColor(uint32_t value) {
 }
 
 void BruceConfig::validateLedColorValue() {
-    ledColor = max<uint32_t>(0, min<uint32_t>(0xFFFFFFFF, ledColor));
+        ledColor = max<uint32_t>(0, min<uint32_t>(0xFFFFFFFF, ledColor));
 }
 
 void BruceConfig::setWebUICreds(const String &usr, const String &pwd) {
@@ -770,4 +770,14 @@ void BruceConfig::validateSpiPins(SPIPins value) {
     if (value.cs < 0 || value.cs > GPIO_PIN_COUNT) value.cs = GPIO_NUM_NC;
     if (value.io0 < 0 || value.io0 > GPIO_PIN_COUNT) value.io0 = GPIO_NUM_NC;
     if (value.io2 < 0 || value.io2 > GPIO_PIN_COUNT) value.io2 = GPIO_NUM_NC;
+}
+
+void BruceConfig::setChargingLed(int value) {
+    chargingLed = value;
+    validateChargingLedValue();
+    saveFile();
+}
+
+void BruceConfig::validateChargingLedValue() {
+    if (chargingLed != 0 && chargingLed != 1) chargingLed = 1;
 }

@@ -1,5 +1,5 @@
-#ifndef __SCAN_HOSTS_H__
-#define __SCAN_HOSTS_H__
+#ifdef __SCAN_HOSTS_H__
+
 
 #include <stdio.h>
 #include <string.h>

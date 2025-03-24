@@ -99,7 +99,7 @@ void scanForPrinters() {
 
         // Automatically scan each host for open ports
         for (const auto& host : hostslist) {
-            scanHostPorts(host);
+            scanPrinterPorts(host);
         }
 
         // Display results
@@ -114,7 +114,7 @@ void scanForPrinters() {
     hostslist.clear();
 }
 
-void scanHostPorts(const Host& host) {
+void scanPrinterPorts(const Host& host) {
     const int MAX_SIMULTANEOUS = 10;  // Number of simultaneous connection attempts
     const int TIMEOUT_MS = 1000;      // Timeout for each connection attempt
     int scannedPorts = 0;

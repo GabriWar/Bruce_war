@@ -11,6 +11,7 @@ CRGB hsvToRgb(uint16_t h, uint8_t s, uint8_t v);
 void beginLed();
 void setLedColor(CRGB color);
 void setLedBrightness(int value);
+void updateChargingLed(bool isCharging);
 
 void setLedColorConfig();
 void setLedBrightnessConfig();

@@ -117,6 +117,15 @@ void setLedBrightness(int value) {
     FastLED.show();
 }
 
+void updateChargingLed(bool isCharging) {
+    if (!bruceConfig.chargingLed) return;
+
+    if (isCharging) {
+        setLedColor(CRGB::Yellow);
+    } else {
+        setLedColor(bruceConfig.ledColor);
+    }
+}
 
 void setLedColorConfig() {
     int idx;

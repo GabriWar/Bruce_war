@@ -735,6 +735,7 @@ void drawBatteryStatus(uint8_t bat) {
   if (bat == 0) return;
 
   bool charging = isCharging();
+  updateChargingLed(charging);
 
   uint16_t color = charging ? TFT_GREEN : bruceConfig.priColor;
 
