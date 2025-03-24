@@ -220,6 +220,12 @@ void checkReboot() {
 ** Function name: isCharging()
 ** Description:   Determines if the device is charging
 ***************************************************************************************/
+#ifdef T_EMBED_1101
 bool isCharging() {
       return bq.getIsCharging();  // Return the charging status from BQ27220
 }
+#else
+bool isCharging() {
+    return false;
+}
+#endif

@@ -96,7 +96,7 @@ void local_scan_setup() {
           if( host.ip == gateway ) result += "(GTW)";
           options.push_back({result.c_str(), [=](){ afterScanOptions(host); }});
         }
-        options.push_back({"Main Menu", [=]() { backToMenu(); }});
+        addOptionToMainMenu();
 
         loopOptions(options);
 
@@ -110,11 +110,11 @@ void afterScanOptions(const Host& host) {
   options = {
     {"Host info",       [=](){ hostInfo(host); }},
   #ifndef LITE_VERSION
-    {"SSH Connect",     [=](){ ssh_setup(host.ip.toString()); }},
+  {"SSH Connect",     lambdaHelper(ssh_setup,host.ip.toString())},
   #endif
     {"Station Deauth",  [&](){ opt=3; }},
     {"ARP Spoofing",    [=](){ arpSpoofing(host, false); }},
-    {"ARP Poisoning",   [=](){ arpPoisoner(); }},
+    {"ARP Poisoning",   arpPoisoner },
   };
   //if(sdcardMounted && bruceConfig.devMode) options.push_back({"ARP MITM (WIP)",  [&](){ opt=5;  }});
   loopOptions(options);
@@ -131,7 +131,8 @@ struct PortScan { //struct pra holdar info das portas
     WiFiClient client;
     bool inProgress;
 };
-std::map<int, std::string> portServices = { //hmm
+
+std::map<int, const char *> portServices = { //hmm
     {19, "CHARGEN"},
     {20, "FTP Data, FTP-DATA"},
     {21, "FTP Control, SFTP, FTP"},
@@ -325,7 +326,7 @@ void hostInfo(const Host& host) {
                         tft.setCursor(7,tft.getCursorY() + LH);
                     tft.setCursor(7, tft.getCursorY() + LH); 
                     tft.print(scan.port);
-                    tft.print( " (" + String(portServices[scan.port].c_str())+ ")");
+                    tft.print(" (" + String(portServices[scan.port])+ ")");
                     scan.client.stop();
                     scan.inProgress = false;
                     activeScanCount--;
