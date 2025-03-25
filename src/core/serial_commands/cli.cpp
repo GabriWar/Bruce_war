@@ -13,8 +13,6 @@
 #include "storage_commands.h"
 #include "util_commands.h"
 #include "wifi_commands.h"
-#include "screen_commands.h"
-
 
 void cliErrorCallback(cmd_error *e) {
     CommandError cmdError(e); // Create wrapper object
@@ -43,7 +41,6 @@ void SerialCli::setup() {
     createStorageCommands(&_cli);
     createUtilCommands(&_cli);
     createWifiCommands(&_cli);
-    createScreenCommands(&_cli);
 
 #ifdef USB_as_HID
     createBadUsbCommands(&_cli);
