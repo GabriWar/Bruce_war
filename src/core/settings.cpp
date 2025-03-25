@@ -889,3 +889,15 @@ void setTheme() {
   }
 
 }
+
+/*********************************************************************
+**  Function: setChargingLedConfig
+**  Enable or disable charging LED
+**********************************************************************/
+void setChargingLedConfig() {
+    options = {
+        {"LED off", [=]() { bruceConfig.setChargingLed(0); }, bruceConfig.chargingLed == 0},
+        {"LED on",  [=]() { bruceConfig.setChargingLed(1); }, bruceConfig.chargingLed == 1},
+    };
+    loopOptions(options, bruceConfig.chargingLed);
+}

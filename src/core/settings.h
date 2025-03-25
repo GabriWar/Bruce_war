@@ -62,4 +62,6 @@ void setSPIPinsMenu(BruceConfig::SPIPins &value);
 
 void setTheme();
 
+void setChargingLedConfig();
+
 #endif

@@ -1,8 +1,6 @@
 #include "screen_commands.h"
 #include "core/settings.h"
 #include <globals.h>
-
-TFT_eSPI tft = TFT_eSPI();
 #include "screen_commands.h"
 uint32_t brightnessCallback(cmd *c) {
     // backlight brightness adjust (range 0-255) https://docs.flipper.net/development/cli/#XQQAI
@@ -165,61 +163,3 @@ void createScreenCommands(SimpleCLI *cli) {
 
 }
 
-
-uint32_t screenshotCallback(cmd *c) {
-    uint16_t width = tft.width();
-    uint16_t height = tft.height();
-    File bmpFile = SD.open("/screenshot.bmp", FILE_WRITE);
-
-    if (!bmpFile) {
-        Serial.println("Failed to open file for writing");
-        return false;
-    }
-
-    // BMP Header
-    bmpFile.write("BM");
-    uint32_t fileSize = 54 + (width * height * 2);
-    bmpFile.write((uint8_t*)&fileSize, 4);
-    uint32_t reserved = 0;
-    bmpFile.write((uint8_t*)&reserved, 4);
-    uint32_t dataOffset = 54;
-    bmpFile.write((uint8_t*)&dataOffset, 4);
-
-    // BMP Info Header
-    uint32_t infoHeaderSize = 40;
-    bmpFile.write((uint8_t*)&infoHeaderSize, 4);
-    bmpFile.write((uint8_t*)&width, 4);
-    bmpFile.write((uint8_t*)&height, 4);
-    uint16_t planes = 1;
-    bmpFile.write((uint8_t*)&planes, 2);
-    uint16_t bitsPerPixel = 16;
-    bmpFile.write((uint8_t*)&bitsPerPixel, 2);
-    uint32_t compression = 0;
-    bmpFile.write((uint8_t*)&compression, 4);
-    uint32_t imageSize = width * height * 2;
-    bmpFile.write((uint8_t*)&imageSize, 4);
-    uint32_t xPixelsPerMeter = 0;
-    bmpFile.write((uint8_t*)&xPixelsPerMeter, 4);
-    uint32_t yPixelsPerMeter = 0;
-    bmpFile.write((uint8_t*)&yPixelsPerMeter, 4);
-    uint32_t colorsUsed = 0;
-    bmpFile.write((uint8_t*)&colorsUsed, 4);
-    uint32_t importantColors = 0;
-    bmpFile.write((uint8_t*)&importantColors, 4);
-
-    // BMP Pixel Data
-    for (int16_t y = height - 1; y >= 0; y--) {
-        for (int16_t x = 0; x < width; x++) {
-            uint16_t color = tft.readPixel(x, y);
-            bmpFile.write((uint8_t*)&color, 2);
-        }
-    }
-
-    bmpFile.close();
-    Serial.println("Screenshot saved to SD card.");
-    return true;
-    Command screenshotCmd = cli->addCommand("screenshot", screenshotCallback);
-
-}
-
-TFT_eSPI tft = TFT_eSPI(); // Create object "tft"

@@ -18,19 +18,20 @@ void ConfigMenu::optionsMenu() {
     #ifdef HAS_RGB_LED
         {"LED Color",     [=]() { beginLed(); setLedColorConfig(); }},
         {"LED Brightness",[=]() { beginLed(); setLedBrightnessConfig(); }},
+        {"Charging LED",  [=]() { beginLed(); setChargingLedConfig(); }},
     #endif
-        {"Sound On/Off",  setSoundConfig },
+        {"Sound",         setSoundConfig },
         {"Startup WiFi",  setWifiStartupConfig },
         {"Startup App",   setStartupApp },
         {"Network Creds", setNetworkCredsMenu },
         {"Clock",         setClock },
         {"Sleep",         setSleepMode },
         {"Factory Reset", [=]() { bruceConfig.factoryReset(); }},
-        {"Restart",       [=]() { ESP.restart(); }},
+        {"Restart",       [=]() { ESP.restart(); }}
     };
 
-    options.push_back({"Turn-off",   powerOff });
-    options.push_back({"Deep Sleep", goToDeepSleep });
+    options.push_back({"Turn-off", powerOff});
+    options.push_back({"Deep Sleep", goToDeepSleep});
 
     if (bruceConfig.devMode) options.push_back({"Dev Mode", [=]() { devMenu(); }});
 

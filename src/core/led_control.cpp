@@ -3,6 +3,8 @@
 #include <globals.h>
 #include "core/display.h"
 #include "core/utils.h"
+#include "display.h"
+
 
 #define FASTLED_RMT_BUILTIN_DRIVER 1  // Use the ESP32 RMT built-in driver
 #define FASTLED_RMT_MAX_CHANNELS 1    // Maximum number of RMT channels
@@ -39,6 +41,12 @@ CRGB hsvToRgb(uint16_t h, uint8_t s, uint8_t v) {
 TaskHandle_t colorWheelTaskHandle = NULL;
 
 void colorWheelTask(void *pvParameters) {
+    //if is charging, does nothing
+    if (isCharging) {
+        vTaskDelete(NULL);
+        return;
+    }
+
     uint16_t hueOffset = 0;
 
     while (1) {

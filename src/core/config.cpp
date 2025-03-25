@@ -1,5 +1,7 @@
-#include "config.h"
 #include "sd_functions.h"
+#ifdef HAS_RGB_LED
+#include "led_control.h"
+#endif
 
 JsonDocument BruceConfig::toJson() const {
     JsonDocument jsonDoc;
@@ -21,6 +23,7 @@ JsonDocument BruceConfig::toJson() const {
 
     setting["ledBright"] = ledBright;
     setting["ledColor"] = String(ledColor, HEX);
+    setting["chargingLed"] = chargingLed;
 
     JsonObject _webUI = setting["webUI"].to<JsonObject>();
     _webUI["user"] = webUI.user;
@@ -136,6 +139,12 @@ void BruceConfig::fromFile() {
     }
     if (!setting["bgColor"].isNull()) {
         bgColor = strtoul(setting["bgColor"], nullptr, 16);
+    } else {
+        count++;
+        log_e("Fail");
+    }
+    if (!setting["chargingLed"].isNull()) {
+        chargingLed = setting["chargingLed"].as<bool>();
     } else {
         count++;
         log_e("Fail");
@@ -471,6 +480,7 @@ void BruceConfig::validateConfig() {
     validateWifiAtStartupValue();
     validateLedBrightValue();
     validateLedColorValue();
+    validateChargingLedValue();
     validateRfScanRangeValue();
     validateRfModuleValue();
     validateRfidModuleValue();
@@ -775,7 +785,17 @@ void BruceConfig::validateSpiPins(SPIPins value) {
 void BruceConfig::setChargingLed(int value) {
     chargingLed = value;
     validateChargingLedValue();
+
+    #ifdef HAS_RGB_LED
+    if (chargingLed) {
+        setLedColor(ledColor);
+    } else {
+        setLedColor(0);
+    }
+    #endif
     saveFile();
+    beginLed();
+
 }
 
 void BruceConfig::validateChargingLedValue() {
