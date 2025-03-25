@@ -110,11 +110,6 @@ void printerReadArpTable(netif * iface) {
 
 
 void scanForPrinters() {
-    if(!wifiConnected) {
-        displayTextLine("Please connect to WiFi first");
-        delay(2000);
-        return;
-    }
 
     bool doScan = true;
     if(!wifiConnected) doScan=wifiConnectMenu();
