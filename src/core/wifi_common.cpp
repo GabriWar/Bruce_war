@@ -127,7 +127,8 @@ bool wifiConnectMenu(wifi_mode_t mode) {
                      default: encryptionTypeStr = "Unknown"; break;
                  }
                  String optionText = encryptionPrefix + ssid + "(" + String(rssi) + "|" + encryptionTypeStr + ")";
-
+                 //print to serial
+                 Serial.println(optionText);
                  options.emplace_back(optionText.c_str(), [=]() { _wifiConnect(ssid, encryptionType); });
 
             }
