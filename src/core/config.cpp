@@ -1,3 +1,4 @@
+#include "config.h"
 #include "sd_functions.h"
 #ifdef HAS_RGB_LED
 #include "led_control.h"
