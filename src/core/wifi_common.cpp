@@ -127,15 +127,13 @@ bool wifiConnectMenu(wifi_mode_t mode) {
                      default: encryptionTypeStr = "Unknown"; break;
                  }
                  String optionText = encryptionPrefix + ssid + "(" + String(rssi) + "|" + encryptionTypeStr + ")";
-                 //print to serial
                  Serial.println(optionText);
                  options.emplace_back(optionText.c_str(), [=]() { _wifiConnect(ssid, encryptionType); });
 
             }
             options.emplace_back("Hidden SSID", [=]() { String __ssid = keyboard("", 32, "Your SSID"); _wifiConnect(__ssid.c_str(), 8); });
-            addOptionToMainMenu();
-
-            loopOptions(options);
+            options.emplace_back("Main Menu", [=]() { backToMenu(); });
+            //loopOptions(options);
 
             if (check(EscPress)) {
                 refresh_scan = true;
