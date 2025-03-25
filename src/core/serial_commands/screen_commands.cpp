@@ -1,7 +1,7 @@
 #include "screen_commands.h"
 #include "core/settings.h"
 #include <globals.h>
-#include "screen_commands.h"
+
 uint32_t brightnessCallback(cmd *c) {
     // backlight brightness adjust (range 0-255) https://docs.flipper.net/development/cli/#XQQAI
     // e.g. "led br 127"

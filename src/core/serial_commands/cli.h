@@ -17,8 +17,6 @@ private:
 };
 
 void cliErrorCallback(cmd_error *e);
-void createScreenCommands(SimpleCLI *cli);
-
 
 #endif
 
