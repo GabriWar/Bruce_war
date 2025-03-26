@@ -25,6 +25,7 @@ std::map<int, std::string> printerPortServices = {
     {9100, "Raw Printing (JetDirect)"},
 };
 
+static std::vector<Option> savedPrinterOptions;  // Changed from MenuOption to Option
 
 void scanPrinterPorts(const Host& host, int currentHost, int totalHosts) {
     const int MAX_SIMULTANEOUS = 10;  // Number of simultaneous connection attempts
@@ -185,6 +186,11 @@ void handleFilePrint(const String& ip) {
     printFile(ip, filepath, *fs);
 }
 
+void restorePrinterMenu() {
+    options = savedPrinterOptions;
+    loopOptions(options);
+}
+
 void handlePrinting(const String& ip) {
     while (!check(EscPress)) {
         options = {
@@ -196,7 +202,10 @@ void handlePrinting(const String& ip) {
                 }
             }},
             {"Print File", [&ip]() { handleFilePrint(ip); }},
-            {"Back", []() {}}
+            {"Back", [&ip]() {
+                while(check(EscPress)) yield();
+                restorePrinterMenu();
+            }}
         };
 
         loopOptions(options);
@@ -316,13 +325,9 @@ void scanForPrinters() {
                     }
 
                     if (has9100) {
+                        // Save the current printer menu options before going to file selection
+                        savedPrinterOptions = options;
                         handlePrinting(host.ip.toString());
-                        if (check(EscPress)) {
-                            while(check(EscPress)) yield();
-                            options = {};
-                            addOptionToMainMenu();
-                            loopOptions(options);
-                        }
                     } else {
                         displayTextLine("Port 9100 not open on this host!");
                         delay(2000);
