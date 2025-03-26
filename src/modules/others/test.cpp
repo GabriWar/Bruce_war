@@ -69,8 +69,8 @@ void testinteractivebar(){
   int progress = 0;
 
   while (!check(EscPress)) {
-      if (check(PrevPress)) { if (progress > 0 and progress <100) progress += 5; }
-      if (check(NextPress)) { if (progress > 0 and progress < 100) progress -= 5; }
+      if (check(PrevPress)) { if (progress >= 0 and progress <100) progress += 5; }
+      if (check(NextPress)) { if (progress > 0 and progress <= 100) progress -= 5; }
       if (check(SelPress)) {
           displayTextLine("Selected: " + String(progress) + "%");
           delay(2000);
@@ -98,8 +98,8 @@ void testmenu(){
 }
 
 void test_setup(){
-  while(!returntomainmenu){
-    if (check(EscPress)) returntomainmenu = true;
+  while(true){
     testmenu();
+    if (check(EscPress)){ break;}
   }
 }
