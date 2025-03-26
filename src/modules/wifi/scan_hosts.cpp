@@ -94,15 +94,11 @@ void local_scan_setup() {
         for(auto host:hostslist) {
           String result = host.ip.toString();
           if( host.ip == gateway ) result += "(GTW)";
-          options.emplace_back(strdup(result.c_str()), [=](){ afterScanOptions(host); });
+          options.push_back({result.c_str(), [=](){ afterScanOptions(host); }});
         }
         addOptionToMainMenu();
 
         loopOptions(options);
-        for (auto& opt : options) {
-          if (strcmp(opt.label, "Main Menu") != 0)
-            free((void*)opt.label);
-        }
         options.clear();
 
         if(!returnToMenu) goto ScanHostMenu;
@@ -247,7 +243,6 @@ std::map<int, const char *> portServices = { //hmm
     {9000, "SonarQube, Portainer"},
     {9042, "Cassandra, Apache Cassandra"},
     {9090, "Prometheus, Web Proxy"},
-    {9100, "Raw printing (JetDirect)"},
     {9200, "Elasticsearch, Elastic Search HTTP"},
     {9300, "Elasticsearch Nodes, Elastic Search Transport"},
     {9418, "Git, Git Protocol"},

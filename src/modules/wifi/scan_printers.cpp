@@ -2,9 +2,10 @@
 #include "core/display.h"
 #include "core/mykeyboard.h"
 #include "core/wifi_common.h"
-#include "clients.h"
 #include "core/utils.h"
 #include "scan_printers.h"
+#include "clients.h"
+
 
 struct printerHostPort {
     String ip;
@@ -25,7 +26,7 @@ std::map<int, std::string> printerPortServices = {
 };
 
 
-void scanPrinterPorts(const Host& host) {
+void scanPrinterPorts(const Host& host, int currentHost, int totalHosts) {
     const int MAX_SIMULTANEOUS = 10;  // Number of simultaneous connection attempts
     const int TIMEOUT_MS = 1000;      // Timeout for each connection attempt
     int scannedPorts = 0;
@@ -45,7 +46,7 @@ void scanPrinterPorts(const Host& host) {
     while((portIter != printerPortServices.end() || activeScanCount > 0) && !scanCanceled) {
         // Update display every 500ms
         if (millis() - lastUpdate > 500) {
-            displayRedStripe("Scanning " + host.ip.toString() + " - Port " + String(scannedPorts) + " of " + String(totalPorts),
+            displayRedStripe("Scanning " + host.ip.toString() + " (" + String(totalHosts - currentHost) + " hosts remaining)",
                            getComplementaryColor2(bruceConfig.priColor), bruceConfig.priColor);
             lastUpdate = millis();
         }
@@ -107,7 +108,63 @@ void printerReadArpTable(netif * iface) {
   etharp_cleanup_netif(iface);
 }
 
+void sendRawPrint(const String& ip, const String& data) {
+    WiFiClient client;
+    if (client.connect(ip.c_str(), 9100)) {
+        client.print(data);
+        client.stop();
+        displayTextLine("Print job sent successfully");
+    } else {
+        displayTextLine("Failed to connect to printer");
+    }
+    delay(2000);
+}
 
+void handlePrinting(const String& ip) {
+    std::vector<Option> printOptions = {
+        {"Print Text", [ip]() {
+            String text = keyboard("", 1000, "Enter text to print:");
+            if (!text.isEmpty()) {
+                sendRawPrint(ip, text + "\n\f");
+            }
+        }},
+        {"Print File", [ip]() {
+            FS *fs = NULL;
+            String filepath = "";
+
+            options = {
+                {"LittleFS", [&fs]() { fs = &LittleFS; }},
+            };
+            if(setupSdCard()) {
+                options.insert(options.begin(), {"SD Card", [&fs]() { fs = &SD; }});
+            }
+
+            loopOptions(options);
+
+            if(fs != NULL) {
+                while(1) {
+                    delay(200);
+                    filepath = loopSD(*fs, true, "Print", "/");
+                    if(filepath == "" || check(EscPress)) break;
+
+                    File fileToprint = fs->open(filepath);
+                    if (fileToprint) {
+                        String fileContent;
+                        while (fileToprint.available()) {
+                            fileContent += (char)fileToprint.read();
+                        }
+                        fileToprint.close();
+                        sendRawPrint(ip, fileContent);
+                    }
+                    delay(200);
+                }
+            }
+        }},
+        {"Back", []() {}}
+    };
+
+    loopOptions(printOptions);
+}
 
 void scanForPrinters() {
 
@@ -146,7 +203,7 @@ void scanForPrinters() {
 
           hostsScanned++;
           if (millis() - lastUpdate > 500) { // Update display every 500ms
-            displayRedStripe("Probing " + String(hostsScanned) + " of " + String(totalHosts) + " hosts", getComplementaryColor2(bruceConfig.priColor), bruceConfig.priColor);
+            displayRedStripe("Scanning " + String(hostsScanned) + " of " + String(totalHosts) + " hosts", getComplementaryColor2(bruceConfig.priColor), bruceConfig.priColor);
             lastUpdate = millis();
           }
 
@@ -174,20 +231,73 @@ void scanForPrinters() {
         }
 
         // Automatically scan each host for open ports
+        int hostIndex = 0;
         for (const auto& host : hostslist) {
-            scanPrinterPorts(host);
+            scanPrinterPorts(host, hostIndex, hostslist.size());
+            hostIndex++;
         }
 
-        // Display results
-        //set black background
-        tft.fillScreen(TFT_BLACK);
-        tft.setCursor(8,30);
-        tft.println("Scan results:");
+        if (printerOpenPortsList.empty()) {
+            displayTextLine("No printers found");
+            while(!check(AnyKeyPress)) yield();
+            while(check(AnyKeyPress)) yield();
+            return;
+        }
+
+        // Group ports by host
+        std::map<String, std::vector<int>> hostPorts;
         for (const auto& entry : printerOpenPortsList) {
-            tft.println("Host: " + entry.ip + " Port: " + String(entry.port));
+            hostPorts[entry.ip].push_back(entry.port);
         }
 
-        delay(5000); // Display results for 5 seconds before returning to the menu
+        // Create menu options
+        options = {};
+        for (const auto& host : hostslist) {
+            auto it = hostPorts.find(host.ip.toString());
+            if (it != hostPorts.end()) {
+                String hostInfo = host.ip.toString();
+                if (host.ip == WiFi.gatewayIP()) {
+                    hostInfo += " (GTW)";
+                }
+                hostInfo += " [" + host.mac + "] (";
+
+                // Add open printer ports
+                for (size_t i = 0; i < it->second.size(); i++) {
+                    if (i > 0) hostInfo += ",";
+                    hostInfo += String(it->second[i]);
+                    if (printerPortServices.count(it->second[i])) {
+                        hostInfo += ":" + String(printerPortServices[it->second[i]].c_str());
+                    }
+                }
+                hostInfo += ")";
+
+                options.emplace_back(strdup(hostInfo.c_str()), [hostInfo, host, &hostPorts]() {
+                    // Check if the host has port 9100 open
+                    auto it = hostPorts.find(host.ip.toString());
+                    bool has9100 = false;
+                    if (it != hostPorts.end()) {
+                        has9100 = std::find(it->second.begin(), it->second.end(), 9100) != it->second.end();
+                    }
+
+                    if (has9100) {
+                        handlePrinting(host.ip.toString());
+                    } else {
+                        displayTextLine("Port 9100 not open on this host!");
+                        delay(2000);
+                    }
+                });
+            }
+        }
+
+        addOptionToMainMenu();
+        loopOptions(options);
+
+        // Clean up allocated memory
+        for (auto& opt : options) {
+            if (strcmp(opt.label, "Main Menu") != 0)
+                free((void*)opt.label);
+        }
+        options.clear();
     }
     hostslist.clear();
 }
