@@ -110,60 +110,71 @@ void printerReadArpTable(netif * iface) {
 
 void sendRawPrint(const String& ip, const String& data) {
     WiFiClient client;
+    displayTextLine("Connecting to printer...");
     if (client.connect(ip.c_str(), 9100)) {
+        displayTextLine("Sending print job...");
         client.print(data);
+        client.flush();
+        delay(100);  // Give some time for the data to be sent
         client.stop();
         displayTextLine("Print job sent successfully");
     } else {
         displayTextLine("Failed to connect to printer");
     }
+
     delay(2000);
+    yield();  // Allow other tasks to run
 }
 
 void handlePrinting(const String& ip) {
-    std::vector<Option> printOptions = {
-        {"Print Text", [ip]() {
-            String text = keyboard("", 1000, "Enter text to print:");
-            if (!text.isEmpty()) {
-                sendRawPrint(ip, text + "\n\f");
-            }
-        }},
-        {"Print File", [ip]() {
-            FS *fs = NULL;
-            String filepath = "";
-
-            options = {
-                {"LittleFS", [&fs]() { fs = &LittleFS; }},
-            };
-            if(setupSdCard()) {
-                options.insert(options.begin(), {"SD Card", [&fs]() { fs = &SD; }});
-            }
-
-            loopOptions(options);
-
-            if(fs != NULL) {
-                while(1) {
-                    delay(200);
-                    filepath = loopSD(*fs, true, "Print", "/");
-                    if(filepath == "" || check(EscPress)) break;
-
-                    File fileToprint = fs->open(filepath);
-                    if (fileToprint) {
-                        String fileContent;
-                        while (fileToprint.available()) {
-                            fileContent += (char)fileToprint.read();
-                        }
-                        fileToprint.close();
-                        sendRawPrint(ip, fileContent);
-                    }
-                    delay(200);
+    bool stayInPrintMenu = true;
+    while (stayInPrintMenu) {
+        std::vector<Option> printOptions = {
+            {"Print Text", [&ip, &stayInPrintMenu]() {
+                String text = keyboard("", 1000, "Enter text to print:");
+                if (!text.isEmpty()) {
+                    sendRawPrint(ip, text + "\n\f");
+                    delay(2000);  // Show success message
+                    stayInPrintMenu = false;  // Return to printer selection
                 }
-            }
-        }},
-        {"Back", []() {}}
-    };
+            }},
+            {"Print File", [&ip, &stayInPrintMenu]() {
+                FS *fs = NULL;
+                String filepath = "";
 
-    loopOptions(printOptions);
+                options = {
+                    {"LittleFS", [&fs]() { fs = &LittleFS; }},
+                };
+                if(setupSdCard()) {
+                    options.insert(options.begin(), {"SD Card", [&fs]() { fs = &SD; }});
+                }
+
+                loopOptions(options);
+
+                if(fs != NULL) {
+                    filepath = loopSD(*fs, true, "*", "/");
+                    if(filepath != "" && !check(EscPress)) {
+                        File fileToprint = fs->open(filepath);
+                        if (fileToprint) {
+                            String fileContent;
+                            while (fileToprint.available()) {
+                                fileContent += (char)fileToprint.read();
+                            }
+                            fileToprint.close();
+                            sendRawPrint(ip, fileContent);
+                            delay(2000);  // Show success message
+                            stayInPrintMenu = false;  // Return to printer selection
+                        }
+                    }
+                }
+            }},
+            {"Back", [&stayInPrintMenu]() {
+                stayInPrintMenu = false;  // Return to printer selection
+            }}
+        };
+
+        loopOptions(printOptions);
+    }
 }
 
 void scanForPrinters() {
