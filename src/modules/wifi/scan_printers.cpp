@@ -126,59 +126,84 @@ void sendRawPrint(const String& ip, const String& data) {
     yield();  // Allow other tasks to run
 }
 
+// Helper function to print a file
+void printFile(const String& ip, const String& filepath, FS& fs) {
+    File file = fs.open(filepath);
+    if (!file) {
+        displayTextLine("Failed to open file");
+        delay(2000);
+        return;
+    }
+
+    String fileContent;
+    while (file.available()) {
+        fileContent += (char)file.read();
+    }
+    file.close();
+
+    sendRawPrint(ip, fileContent);
+    delay(2000);
+}
+
+// Helper function to handle file selection and printing
+void handleFilePrint(const String& ip) {
+    FS* fs = nullptr;
+
+    // Select storage (SD Card or LittleFS)
+    options = {
+        {"SD Card", [&fs]() { fs = &SD; }},
+        {"LittleFS", [&fs]() { fs = &LittleFS; }}
+    };
+    if (!setupSdCard()) {
+        options.erase(options.begin()); // Remove SD Card option if not available
+    }
+    loopOptions(options);
+
+    if (!fs) return;
+
+    // Select file
+    String filepath = loopSD(*fs, true, "*", "/");
+    if (filepath.isEmpty() || check(EscPress)) return;
+
+    // Check file size
+    File file = fs->open(filepath);
+    if (!file) return;
+
+    size_t fileSize = file.size();
+    file.close();
+
+    if (fileSize > 50 * 1024 * 1024) { // 50MB
+        displayTextLine("Warning: File size > 50MB");
+        options = {
+            {"Yes, continue", [&ip, &filepath, fs]() { printFile(ip, filepath, *fs); }},
+            {"No, select another", []() {}}
+        };
+        loopOptions(options);
+        return;
+    }
+
+    printFile(ip, filepath, *fs);
+}
+
 void handlePrinting(const String& ip) {
-    bool stayInPrintMenu = true;
-    while (stayInPrintMenu) {
-        std::vector<Option> printOptions = {
-            {"Print Text", [&ip, &stayInPrintMenu]() {
+    while (!check(EscPress)) {
+        options = {
+            {"Print Text", [&ip]() {
                 String text = keyboard("", 1000, "Enter text to print:");
                 if (!text.isEmpty()) {
                     sendRawPrint(ip, text + "\n\f");
-                    delay(2000);  // Show success message
-                    stayInPrintMenu = false;  // Return to printer selection
+                    delay(2000);
                 }
             }},
-            {"Print File", [&ip, &stayInPrintMenu]() {
-                FS *fs = NULL;
-                String filepath = "";
-
-                options = {
-                    {"LittleFS", [&fs]() { fs = &LittleFS; }},
-                };
-                if(setupSdCard()) {
-                    options.insert(options.begin(), {"SD Card", [&fs]() { fs = &SD; }});
-                }
-
-                loopOptions(options);
-
-                if(fs != NULL) {
-                    filepath = loopSD(*fs, true, "*", "/");
-                    if(filepath != "" && !check(EscPress)) {
-                        File fileToprint = fs->open(filepath);
-                        if (fileToprint) {
-                            String fileContent;
-                            while (fileToprint.available()) {
-                                fileContent += (char)fileToprint.read();
-                            }
-                            fileToprint.close();
-                            sendRawPrint(ip, fileContent);
-                            delay(2000);  // Show success message
-                            stayInPrintMenu = false;  // Return to printer selection
-                        }
-                    }
-                }
-            }},
-            {"Back", [&stayInPrintMenu]() {
-                stayInPrintMenu = false;  // Return to printer selection
-            }}
+            {"Print File", [&ip]() { handleFilePrint(ip); }},
+            {"Back", []() {}}
         };
 
-        loopOptions(printOptions);
+        loopOptions(options);
     }
 }
 
 void scanForPrinters() {
-
     bool doScan = true;
     if(!wifiConnected) doScan=wifiConnectMenu();
 
@@ -292,6 +317,12 @@ void scanForPrinters() {
 
                     if (has9100) {
                         handlePrinting(host.ip.toString());
+                        if (check(EscPress)) {
+                            while(check(EscPress)) yield();
+                            options = {};
+                            addOptionToMainMenu();
+                            loopOptions(options);
+                        }
                     } else {
                         displayTextLine("Port 9100 not open on this host!");
                         delay(2000);
@@ -305,8 +336,8 @@ void scanForPrinters() {
 
         // Clean up allocated memory
         for (auto& opt : options) {
-            if (strcmp(opt.label, "Main Menu") != 0)
-                free((void*)opt.label);
+            if (strcmp(opt.label.c_str(), "Main Menu") != 0)
+                free((void*)opt.label.c_str());
         }
         options.clear();
     }
