@@ -6,7 +6,6 @@
 #include "core/utils.h"
 #include "scan_printers.h"
 #include <SD.h>
-#include <FS.h>
 
 struct printerHostPort {
     String ip;
