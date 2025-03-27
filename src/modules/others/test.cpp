@@ -67,39 +67,69 @@ void testprogressbar(){
 
 void testinteractivebar(){
   int progress = 0;
+  bool redraw = true;
 
   while (!check(EscPress)) {
-      if (check(PrevPress)) { if (progress >= 0 and progress <100) progress += 5; }
-      if (check(NextPress)) { if (progress > 0 and progress <= 100) progress -= 5; }
+      if (redraw) {
+          drawMainBorderWithTitle("Selected: " + String(progress) + "%");
+          redraw = false;
+      }
+
+      if (check(PrevPress)) {
+          delay(200); // Debounce
+          if (progress >= 0 && progress < 100) {
+              progress += 5;
+              redraw = true;
+          }
+      }
+      if (check(NextPress)) {
+          delay(200); // Debounce
+          if (progress > 0 && progress <= 100) {
+              progress -= 5;
+              redraw = true;
+          }
+      }
       if (check(SelPress)) {
           displayTextLine("Selected: " + String(progress) + "%");
           delay(2000);
           return;
       }
-    progressHandler(progress, 100, "select =" + String(progress) + "%");
-    delay(10);
+
+      progressHandler(progress, 100, "Progress: " + String(progress) + "%");
+      delay(10);
   }
   while(check(EscPress)) yield();
 }
 bool returntomainmenu = false;
+void submenu(){
+  options = {
+    {"TEST KEYBOARD", [=]() { testkeyboard(); }},
+    {"TEST FILE PICKER", [=]() { testfilepicker(); }},
+    {"TEST INT PICKER", [=]() { testintpicker(); }},
+    {"TEST PROGRESS BAR", [=]() { testprogressbar(); }},
+    {"TEST INTERACTIVE BAR", [=]() { testinteractivebar(); }}
+  };
+  addOptionToMainMenu();
+  loopOptions(options);
+}
 void testmenu(){
-  while (!returntomainmenu) {
     options = {
       {"KEYBOARD", [=]() { testkeyboard();}},
       {"FILE PICKER", [=]() { testfilepicker();}},
       {"INT PICKER", [=]() { testintpicker();}},
       {"PROGRESS BAR", [=]() { testprogressbar();}},
-      {"INTERACTIVE BAR", [=]() { testinteractivebar();}}
+      {"INTERACTIVE BAR", [=]() { testinteractivebar();}},
+      {"SUBMENU", [=]() { submenu();}}
     };
     addOptionToMainMenu();
     loopOptions(options);
   }
-  returntomainmenu = false;
-}
 
 void test_setup(){
   while(true){
+    Serial.println("test_setup");
     testmenu();
-    if (check(EscPress)){ break;}
+    if(check(EscPress) or returnToMenu) break;
+    Serial.println("test_setup done");
   }
 }
