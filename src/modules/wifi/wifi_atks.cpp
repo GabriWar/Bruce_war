@@ -115,13 +115,30 @@ void wifi_atk_menu()
 {
   bool scanAtks = false;
   options = {
-      {"Target Atks", [&]()
+      {"Target Atks", [&]
        { scanAtks = true; }},
-      {"Beacon SPAM", [=]()
+      {"Beacon SPAM", [=]
        { beaconAttack(); }},
-      {"Deauth Flood", [=]()
+      {"Deauth Flood", [=]
        { deauthFloodAttack(); }},
-   };
+      {"PCAP Analysis", [=]() {
+          FS* fs = nullptr;
+          options = {
+              {"SD Card", [&]() { fs = &SD; }},
+              {"LittleFS", [&]() { fs = &LittleFS; }}
+          };
+          if (!setupSdCard()) {
+              options.erase(options.begin()); // Remove SD Card option if not available
+          }
+          loopOptions(options);
+          if (!fs) return;
+
+          String filepath = loopSD(*fs, true, "PCAP", "/BrucePCAP/");
+          if (filepath.isEmpty() || check(EscPress)) return;
+
+          parsePCAPFile(filepath.c_str(), *fs);
+      }}
+  };
    addOptionToMainMenu();
    loopOptions(options);
    if (scanAtks)

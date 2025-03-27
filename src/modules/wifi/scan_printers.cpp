@@ -106,8 +106,8 @@ void printerReadArpTable(netif *iface) {
         ip4_addr_t *ip_ret;
         eth_addr *eth_ret;
         if (etharp_get_entry(i, &ip_ret, &iface, &eth_ret)) { hostslist.emplace_back(ip_ret, eth_ret); }
-    }
-    etharp_cleanup_netif(iface);
+  }
+  etharp_cleanup_netif(iface);
 }
 
 void sendRawPrint(const String &ip, const String &data) {
@@ -192,15 +192,15 @@ void restorePrinterMenu() {
 
 void handlePrinting(const String& ip, int port) {
 
-        while (!check(EscPress)) {
-            options = {
+    while (!check(EscPress)) {
+        options = {
                 {"Print Text", [&ip, port]() {
-                    String text = keyboard("", 1000, "Enter text to print:");
-                    if (!text.isEmpty()) {
+                String text = keyboard("", 1000, "Enter text to print:");
+                if (!text.isEmpty()) {
                         switch(port) {
                             case 9100:
-                                sendRawPrint(ip, text + "\n\f");
-                                delay(2000);
+                    sendRawPrint(ip, text + "\n\f");
+                    delay(2000);
                                 break;
                             case 515:
                                 tft.println("LPD printing - Work in Progress");
@@ -267,120 +267,120 @@ void handlePrinting(const String& ip, int port) {
                     return;
                 }}
             };
-            loopOptions(options);
-        }
+        loopOptions(options);
+    }
 }
 
 void scanNetworkHosts() {
-    hostslist.clear();
+        hostslist.clear();
 
-    // IPAddress uint32_t op returns number in big-endian
-    // for simplicity of iteration and arithmetics convert to little-endian
-    const uint32_t localIp = ntohl(WiFi.localIP());
-    const IPAddress gateway = WiFi.gatewayIP();
-    const uint32_t subnetMask = ntohl(WiFi.subnetMask());
-    const uint32_t networkAddress = ntohl(gateway) & subnetMask;
-    const uint32_t broadcast = networkAddress | ~subnetMask;
+        // IPAddress uint32_t op returns number in big-endian
+        // for simplicity of iteration and arithmetics convert to little-endian
+        const uint32_t localIp = ntohl(WiFi.localIP());
+        const IPAddress gateway = WiFi.gatewayIP();
+        const uint32_t subnetMask = ntohl(WiFi.subnetMask());
+        const uint32_t networkAddress = ntohl(gateway) & subnetMask;
+        const uint32_t broadcast = networkAddress | ~subnetMask;
 
-    // get iface
+        // get iface
     void *netif = nullptr;
-    tcpip_adapter_get_netif(TCPIP_ADAPTER_IF_STA, &netif);
-    struct netif *net_iface = (struct netif *)netif;
-    etharp_cleanup_netif(net_iface); // to avoid gateway duplication
+        tcpip_adapter_get_netif(TCPIP_ADAPTER_IF_STA, &netif);
+        struct netif *net_iface = (struct netif *)netif;
+        etharp_cleanup_netif(net_iface); // to avoid gateway duplication
 
-    // send arp requests, read table each ARP_TABLE_SIZE requests
-    uint16_t tableReadCounter = 0;
-    uint32_t hostsScanned = 0;
-    const uint32_t totalHosts = broadcast - networkAddress - 1;
-    static uint32_t lastUpdate = 0;
+        // send arp requests, read table each ARP_TABLE_SIZE requests
+        uint16_t tableReadCounter = 0;
+        uint32_t hostsScanned = 0;
+        const uint32_t totalHosts = broadcast - networkAddress - 1;
+        static uint32_t lastUpdate = 0;
 
     for (uint32_t ip_le = networkAddress + 1; ip_le < broadcast; ++ip_le) {
         if (ip_le == localIp) continue;
 
-        ip4_addr_t ip_be{htonl(ip_le)}; // big endian
+          ip4_addr_t ip_be{htonl(ip_le)}; // big endian
 
-        hostsScanned++;
-        if (millis() - lastUpdate > 500) { // Update display every 500ms
+          hostsScanned++;
+          if (millis() - lastUpdate > 500) { // Update display every 500ms
             displayRedStripe(
                 "Scanning " + String(hostsScanned) + " of " + String(totalHosts) + " hosts",
                 getComplementaryColor2(bruceConfig.priColor),
                 bruceConfig.priColor
             );
             lastUpdate = millis();
-        }
+          }
 
-        err_t res = etharp_request(net_iface, &ip_be);
+          err_t res = etharp_request(net_iface, &ip_be);
 
         if (res != ERR_OK) {
             Serial.println("Arp req for: " + IPAddress(ip_be.addr).toString() + "failed with ec: " + res);
-        } else {
+          } else {
             ++tableReadCounter;
-        }
+          }
 
-        vTaskDelay(printerArpRequestDelay);
+          vTaskDelay(printerArpRequestDelay);
 
-        // read table if we sent ARP_TABLE_SIZE requests
+          // read table if we sent ARP_TABLE_SIZE requests
         if (tableReadCounter == ARP_TABLE_SIZE) {
             printerReadArpTable(net_iface);
             tableReadCounter = 0;
+          }
         }
-    }
 }
 
 void selectHostsToScan() {
     printerOpenPortsList.clear();
 
-    if (hostslist.empty()) {
-        tft.println("No hosts found");
-        delay(2000);
-        return;
-    }
+        if (hostslist.empty()) {
+            tft.println("No hosts found");
+            delay(2000);
+            return;
+        }
 
-    // Automatically scan each host for open ports
-    int hostIndex = 0;
+        // Automatically scan each host for open ports
+        int hostIndex = 0;
     for (const auto &host : hostslist) {
-        scanPrinterPorts(host, hostIndex, hostslist.size());
-        hostIndex++;
-    }
+            scanPrinterPorts(host, hostIndex, hostslist.size());
+            hostIndex++;
+        }
 
-    if (printerOpenPortsList.empty()) {
-        displayTextLine("No printers found");
+        if (printerOpenPortsList.empty()) {
+            displayTextLine("No printers found");
         while (!check(AnyKeyPress)) yield();
         while (check(AnyKeyPress)) yield();
     }
 }
 
 void showPrinterMenu() {
-    // Group ports by host
-    std::map<String, std::vector<int>> hostPorts;
+        // Group ports by host
+        std::map<String, std::vector<int>> hostPorts;
     for (const auto &entry : printerOpenPortsList) {
-        hostPorts[entry.ip].push_back(entry.port);
-    }
+            hostPorts[entry.ip].push_back(entry.port);
+        }
 
-    // Create menu options
-    options = {};
+        // Create menu options
+        options = {};
     for (const auto &host : hostslist) {
-        auto it = hostPorts.find(host.ip.toString());
-        if (it != hostPorts.end()) {
-            String hostInfo = host.ip.toString();
-            if (host.ip == WiFi.gatewayIP()) {
-                hostInfo += " (GTW)";
-            }
+            auto it = hostPorts.find(host.ip.toString());
+            if (it != hostPorts.end()) {
+                String hostInfo = host.ip.toString();
+                if (host.ip == WiFi.gatewayIP()) {
+                    hostInfo += " (GTW)";
+                }
             hostInfo += "(";
 
-            // Add open printer ports
-            for (size_t i = 0; i < it->second.size(); i++) {
-                if (i > 0) hostInfo += ",";
-                hostInfo += String(it->second[i]);
-                if (printerPortServices.count(it->second[i])) {
-                    hostInfo += ":" + String(printerPortServices[it->second[i]].c_str());
+                // Add open printer ports
+                for (size_t i = 0; i < it->second.size(); i++) {
+                    if (i > 0) hostInfo += ",";
+                    hostInfo += String(it->second[i]);
+                    if (printerPortServices.count(it->second[i])) {
+                        hostInfo += ":" + String(printerPortServices[it->second[i]].c_str());
+                    }
                 }
-            }
-            hostInfo += ")";
+                hostInfo += ")";
 
-            options.emplace_back(strdup(hostInfo.c_str()), [hostInfo, host, &hostPorts]() {
-                auto it = hostPorts.find(host.ip.toString());
-                if (it != hostPorts.end()) {
+                options.emplace_back(strdup(hostInfo.c_str()), [hostInfo, host, &hostPorts]() {
+                    auto it = hostPorts.find(host.ip.toString());
+                    if (it != hostPorts.end()) {
                     // Create port selection menu
                     std::vector<Option> portOptions;
                     for (const auto& port : it->second) {
@@ -397,21 +397,21 @@ void showPrinterMenu() {
                     }
                     portOptions.emplace_back("Back", []() {});
                     loopOptions(portOptions);
-                }
-            });
+                    }
+                });
+            }
         }
-    }
 
-    addOptionToMainMenu();
-    loopOptions(options);
+        addOptionToMainMenu();
+        loopOptions(options);
 
-    // Clean up allocated memory
+        // Clean up allocated memory
     for (auto &opt : options) {
         if (strcmp(opt.label.c_str(), "Main Menu") != 0) {
             free((void *)opt.label.c_str());
         }
-    }
-    options.clear();
+        }
+        options.clear();
 }
 
 void scanForPrinters() {
@@ -425,7 +425,7 @@ void scanForPrinters() {
         selectHostsToScan();
         if (!printerOpenPortsList.empty()) {
             showPrinterMenu();
-        }
-        hostslist.clear();
+    }
+    hostslist.clear();
     }
 }
