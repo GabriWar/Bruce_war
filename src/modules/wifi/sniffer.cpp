@@ -69,6 +69,11 @@ struct AP_info {
     int8_t power;
     uint32_t last_seen;
     bool beacon_logged;
+
+    // Add operator< for std::set comparison
+    bool operator<(const AP_info& other) const {
+        return memcmp(bssid, other.bssid, 6) < 0;
+    }
 };
 
 struct WPAHandshake {
@@ -314,67 +319,83 @@ typedef struct pcaprec_hdr_s {
 } pcaprec_hdr_t;
 
 void saveHandshake(const wifi_promiscuous_pkt_t* packet, bool beacon, FS &Fs) {
-  // Construire le nom du fichier en utilisant les adresses MAC de l'AP et du client
-  const uint8_t *addr1 = packet->payload + 4;  // Adresse du destinataire (Adresse 1)
-  const uint8_t *addr2 = packet->payload + 10; // Adresse de l'expéditeur (Adresse 2)
-  const uint8_t *bssid = packet->payload + 16; // Adresse BSSID (Adresse 3)
-  const uint8_t *apAddr;
+    const uint8_t *addr1 = packet->payload + 4;  // Destination
+    const uint8_t *addr2 = packet->payload + 10; // Source
+    const uint8_t *bssid = packet->payload + 16; // BSSID
+    const uint8_t *apAddr;
 
-  if (memcmp(addr1, bssid, 6) == 0) {
-    apAddr = addr1;
-  } else {
-    apAddr = addr2;
-  }
-
-  char nomFichier[50];
-  sprintf(nomFichier, "/BrucePCAP/handshakes/HS_%02X%02X%02X%02X%02X%02X.pcap",
-          apAddr[0], apAddr[1], apAddr[2], apAddr[3], apAddr[4], apAddr[5]);
-
-  // Vérifier si le fichier existe déjà
-  bool fichierExiste = false;
-
-  // Check if the MAC Address was registered in the list
-  if(SavedHS.find(String((char*)apAddr, 6)) != SavedHS.end()) {
-    fichierExiste=true;
-  }
-
-  // Si probe est true et que le fichier n'existe pas, ignorer l'enregistrement
-  if (beacon && !fichierExiste) {
-    return;
-  }
-
-  // Ouvrir le fichier en mode ajout si existant sinon en mode écriture
-  File fichierPcap = Fs.open(nomFichier, fichierExiste ? FILE_APPEND : FILE_WRITE); // if the file already exists in the new session, will overwrite it
-  if (!fichierPcap) {
-    Serial.println("Fail creating the EAPOL/Handshake PCAP file");
-    return;
-  }
-
-  if (!beacon && !fichierExiste) {
-    Serial.println("New EAPOL/Handshake PCAP file, writing header");
-    SavedHS.insert(String((char*)apAddr, 6));
-    num_HS++;
-    writeHeader(fichierPcap);
-  }
-  if (beacon && fichierExiste) {
-    BeaconList ThisBeacon;
-    memcpy(ThisBeacon.MAC,(char*)apAddr, 6);
-    ThisBeacon.channel=ch;
-    if (registeredBeacons.find(ThisBeacon) != registeredBeacons.end()) {
-      return; // Beacon déjà enregistré pour ce BSSID
+    if (memcmp(addr1, bssid, 6) == 0) {
+        apAddr = addr1;
+    } else {
+        apAddr = addr2;
     }
-    registeredBeacons.insert(ThisBeacon); // Ajouter le BSSID à l'ensemble
-  }
 
-  // Écrire l'en-tête du paquet et le paquet lui-même dans le fichier
-  pcaprec_hdr_t pcap_packet_header;
-  pcap_packet_header.ts_sec = packet->rx_ctrl.timestamp / 1000000;
-  pcap_packet_header.ts_usec = packet->rx_ctrl.timestamp % 1000000;
-  pcap_packet_header.incl_len = packet->rx_ctrl.sig_len;
-  pcap_packet_header.orig_len = packet->rx_ctrl.sig_len;
-  fichierPcap.write((const byte*)&pcap_packet_header, sizeof(pcaprec_hdr_t));
-  fichierPcap.write(packet->payload, packet->rx_ctrl.sig_len);
-  fichierPcap.close();
+    // Check if this is a complete handshake
+    bool isCompleteHandshake = false;
+    if (!beacon) {
+        const uint8_t* key_frame = packet->payload + 24 + 8;
+        if (key_frame[0] == 0x02) {  // EAPOL Key frame
+            uint16_t key_info = (key_frame[2] << 8) | key_frame[3];
+            if ((key_info & 0x0080) && (key_info & 0x0100)) {  // Message 3 of 4
+                isCompleteHandshake = true;
+            }
+        }
+    }
+
+    char nomFichier[50];
+    if (isCompleteHandshake) {
+        // For complete handshakes, use HS-COMPLETE prefix
+        sprintf(nomFichier, "/BrucePCAP/handshakes/HS-COMPLETE_%02X%02X%02X%02X%02X%02X.pcap",
+                apAddr[0], apAddr[1], apAddr[2], apAddr[3], apAddr[4], apAddr[5]);
+    } else {
+        // For regular handshakes, use HS prefix
+        sprintf(nomFichier, "/BrucePCAP/handshakes/HS_%02X%02X%02X%02X%02X%02X.pcap",
+                apAddr[0], apAddr[1], apAddr[2], apAddr[3], apAddr[4], apAddr[5]);
+    }
+
+    // Check if the MAC Address was registered in the list
+    bool fichierExiste = false;
+    if(SavedHS.find(String((char*)apAddr, 6)) != SavedHS.end()) {
+        fichierExiste = true;
+    }
+
+    // If probe is true and that the file doesn't exist, ignore the record
+    if (beacon && !fichierExiste) {
+        return;
+    }
+
+    // Open file in append mode if existing, write mode if new
+    File fichierPcap = Fs.open(nomFichier, fichierExiste ? FILE_APPEND : FILE_WRITE);
+    if (!fichierPcap) {
+        Serial.println("Fail creating the EAPOL/Handshake PCAP file");
+        return;
+    }
+
+    if (!beacon && !fichierExiste) {
+        Serial.println("New EAPOL/Handshake PCAP file, writing header");
+        SavedHS.insert(String((char*)apAddr, 6));
+        num_HS++;
+        writeHeader(fichierPcap);
+    }
+    if (beacon && fichierExiste) {
+        BeaconList ThisBeacon;
+        memcpy(ThisBeacon.MAC,(char*)apAddr, 6);
+        ThisBeacon.channel=ch;
+        if (registeredBeacons.find(ThisBeacon) != registeredBeacons.end()) {
+            return; // Beacon already registered for this BSSID
+        }
+        registeredBeacons.insert(ThisBeacon);
+    }
+
+    // Write packet header and packet data
+    pcaprec_hdr_t pcap_packet_header;
+    pcap_packet_header.ts_sec = packet->rx_ctrl.timestamp / 1000000;
+    pcap_packet_header.ts_usec = packet->rx_ctrl.timestamp % 1000000;
+    pcap_packet_header.incl_len = packet->rx_ctrl.sig_len;
+    pcap_packet_header.orig_len = packet->rx_ctrl.sig_len;
+    fichierPcap.write((const byte*)&pcap_packet_header, sizeof(pcaprec_hdr_t));
+    fichierPcap.write(packet->payload, packet->rx_ctrl.sig_len);
+    fichierPcap.close();
 }
 
 void printAddress(const uint8_t* addr) {
