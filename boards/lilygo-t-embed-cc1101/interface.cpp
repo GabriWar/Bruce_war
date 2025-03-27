@@ -229,7 +229,8 @@ void checkReboot() {
 ***************************************************************************************/
 #ifdef USE_BQ27220_VIA_I2
 bool isCharging() {
-      return bq.getIsCharging();  // Return the charging status from BQ27220
+      return bq.getIsCharging();
+      Serial.println("tembed:" + String(bq.getIsCharging()));  // Return the charging status from BQ27220
 }
 #else
 bool isCharging() {
