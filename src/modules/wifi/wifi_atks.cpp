@@ -14,6 +14,7 @@
 #include "esp_system.h"
 #include "evil_portal.h"
 #include "vector"
+#include "sniffer.h"
 
 std::vector<wifi_ap_record_t> ap_records;
 /**

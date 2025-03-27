@@ -5,6 +5,8 @@
 #include <WiFi.h>
 #include <set>
 
+void parsePCAPFile(const char* filename, FS &fs);
+
 struct BeaconList {
     char MAC[6];
     uint8_t channel;
@@ -16,7 +18,7 @@ struct BeaconList {
             return cmp < 0;  // if MACs are diferent, compares lexicografically
         }
         return channel < other.channel;  // If MACs are equal, compare by channel
-    }    
+    }
 };
 
 extern bool _only_HS;
