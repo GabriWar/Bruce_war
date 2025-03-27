@@ -73,7 +73,7 @@ void testintpicker() {
 
 void testprogressbar() {
     for (int i = 0; i < 100; i++) {
-        progressbar(i, 100, "processing");
+        progressHandler(i, 100, "processing");
         delay(10);
     }
 }
@@ -84,25 +84,23 @@ void testprogressbar() {
 void testinteractivebar() {
     int progress = 0;
     bool redraw = true;
+     progressHandler(progress, 100,"");
+    drawMainBorderWithTitle("Selected: " + String(progress) + "%");
 
     while (!check(EscPress)) {
-
-        if (redraw) {
-            progressbar(progress, 100,"");
-            drawMainBorderWithTitle("Selected: " + String(progress) + "%");
-            redraw = false;
-        }
 
         if (check(PrevPress)) {
             if (progress >= 0 && progress < 100) {
                 progress += 1;
-                redraw = true;
+                progressHandler(progress, 100,"");
+                drawMainBorderWithTitle("Selected: " + String(progress) + "%");
             }
         }
         if (check(NextPress)) {
             if (progress > 0 && progress <= 100) {
                 progress -= 1;
-                redraw = true;
+                progressHandler(progress, 100,"");
+                drawMainBorderWithTitle("Selected: " + String(progress) + "%");
             }
         }
         if (check(SelPress)) {
