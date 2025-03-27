@@ -349,7 +349,7 @@ void saveHandshake(const wifi_promiscuous_pkt_t* packet, bool beacon, FS &Fs) {
         }
     }
 
-    char nomFichier[50];
+    char nomFichier[60];  // Increased buffer size from 50 to 60
     if (isCompleteHandshake) {
         // For complete handshakes, use HS-COMPLETE prefix
         sprintf(nomFichier, "/BrucePCAP/handshakes/HS-COMPLETE_%02X%02X%02X%02X%02X%02X.pcap",
