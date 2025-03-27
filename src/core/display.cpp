@@ -738,6 +738,8 @@ void drawBatteryStatus(uint8_t bat) {
   if (bat == 0) return;
 
   bool charging = isCharging();
+  if(charging) {
+  Serial.println(charging);}
   #ifdef HAS_RGB_LED
   updateChargingLed(charging);
   #endif
