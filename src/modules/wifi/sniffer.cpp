@@ -16,7 +16,6 @@
 #include "nvs_flash.h"
 #include "driver/gpio.h"
 #include <set>
-
 #include <Arduino.h>
 #include <TimeLib.h>
 #include "FS.h"
@@ -33,6 +32,21 @@
 	#include <SdFat.h>
 #endif
 #include "modules/wifi/wifi_atks.h" // to use deauth frames and cmds
+
+//===== PCAP Structures =====//
+typedef struct pcaprec_hdr_s {
+    uint32_t ts_sec;         /* timestamp seconds */
+    uint32_t ts_usec;        /* timestamp microseconds */
+    uint32_t incl_len;       /* number of octets of packet saved in file */
+    uint32_t orig_len;       /* actual length of packet */
+} pcaprec_hdr_t;
+
+//===== Function Declarations =====//
+bool isItEAPOL(const wifi_promiscuous_pkt_t* packet);
+void saveHandshake(const wifi_promiscuous_pkt_t* packet, bool beacon, FS &Fs);
+bool writeHeader(File file);
+bool isHiddenSSID(const uint8_t* frame, size_t frame_len);
+uint8_t getHandshakeMessageNumber(const uint8_t* eapol_frame);
 
 //===== SETTINGS =====//
 #define CHANNEL 1
@@ -310,13 +324,6 @@ bool isItEAPOL(const wifi_promiscuous_pkt_t* packet) {
 
   return false;
 }
-// Définition de l'en-tête d'un paquet PCAP
-typedef struct pcaprec_hdr_s {
-  uint32_t ts_sec;         /* timestamp secondes */
-  uint32_t ts_usec;        /* timestamp microsecondes */
-  uint32_t incl_len;       /* nombre d'octets du paquet enregistrés dans le fichier */
-  uint32_t orig_len;       /* longueur réelle du paquet */
-} pcaprec_hdr_t;
 
 void saveHandshake(const wifi_promiscuous_pkt_t* packet, bool beacon, FS &Fs) {
     const uint8_t *addr1 = packet->payload + 4;  // Destination
