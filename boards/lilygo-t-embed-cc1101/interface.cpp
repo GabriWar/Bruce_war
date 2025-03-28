@@ -2,6 +2,7 @@
 #include "core/powerSave.h"
 #include <bq27220.h>
 #include <globals.h>
+#include <bq27220.h>
 
 #include <RotaryEncoder.h>
 // extern RotaryEncoder encoder;
