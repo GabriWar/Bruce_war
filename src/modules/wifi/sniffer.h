@@ -5,8 +5,6 @@
 #include <WiFi.h>
 #include <set>
 
-void parsePCAPFile(const char* filename, FS &fs);
-
 struct BeaconList {
     char MAC[6];
     uint8_t channel;

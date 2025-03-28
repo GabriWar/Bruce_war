@@ -16,6 +16,7 @@
 #include "nvs_flash.h"
 #include "driver/gpio.h"
 #include <set>
+
 #include <Arduino.h>
 #include <TimeLib.h>
 #include "FS.h"
@@ -32,21 +33,6 @@
 	#include <SdFat.h>
 #endif
 #include "modules/wifi/wifi_atks.h" // to use deauth frames and cmds
-
-//===== PCAP Structures =====//
-typedef struct pcaprec_hdr_s {
-    uint32_t ts_sec;         /* timestamp seconds */
-    uint32_t ts_usec;        /* timestamp microseconds */
-    uint32_t incl_len;       /* number of octets of packet saved in file */
-    uint32_t orig_len;       /* actual length of packet */
-} pcaprec_hdr_t;
-
-//===== Function Declarations =====//
-bool isItEAPOL(const wifi_promiscuous_pkt_t* packet);
-void saveHandshake(const wifi_promiscuous_pkt_t* packet, bool beacon, FS &Fs);
-bool writeHeader(File file);
-bool isHiddenSSID(const uint8_t* frame, size_t frame_len);
-uint8_t getHandshakeMessageNumber(const uint8_t* eapol_frame);
 
 //===== SETTINGS =====//
 #define CHANNEL 1
@@ -72,221 +58,6 @@ File _pcap_file;
 std::set<BeaconList> registeredBeacons;
 std::set<String> SavedHS; // Saves the MAC of beacon HS detected in the session
 String filename = "/BrucePCAP/" + (String)FILENAME + ".pcap";
-
-//===== Structures =====//
-struct AP_info {
-    uint8_t bssid[6];
-    uint8_t essid[33];
-    uint8_t essid_len;
-    uint8_t channel;
-    uint8_t encryption;
-    int8_t power;
-    uint32_t last_seen;
-    bool beacon_logged;
-
-    // Add operator< for std::set comparison
-    bool operator<(const AP_info& other) const {
-        return memcmp(bssid, other.bssid, 6) < 0;
-    }
-};
-
-struct WPAHandshake {
-    uint8_t ap_mac[6];
-    uint8_t client_mac[6];
-    uint8_t messages[4][1024];
-    uint8_t message_lengths[4];
-    uint8_t received_messages;
-    bool complete;
-    uint32_t last_update;
-};
-
-//===== Global Variables =====//
-std::set<AP_info> registeredAPs;
-std::set<WPAHandshake> activeHandshakes;
-
-//===== PCAP Analysis Functions =====//
-struct PacketInfo {
-    uint32_t timestamp;
-    uint16_t type;
-    uint16_t subtype;
-    uint8_t source[6];
-    uint8_t destination[6];
-    uint8_t bssid[6];
-    uint8_t ssid[33];
-    uint8_t ssid_len;
-    bool is_beacon;
-    bool is_eapol;
-    int8_t rssi;
-};
-
-void parsePCAPFile(const char* filename, FS &fs) {
-    File file = fs.open(filename, FILE_READ);
-    if (!file) {
-        displayTextLine("Failed to open PCAP file");
-        delay(2000);
-        return;
-    }
-
-    // Skip PCAP header
-    file.seek(24);
-
-    std::set<std::string> uniqueAPs;
-    std::set<std::string> uniqueClients;
-    std::map<std::string, std::string> apSSIDs; // Map to store BSSID -> SSID
-    std::set<std::string> apWithHandshake; // Set to store APs with complete handshakes
-    int totalPackets = 0;
-    int beaconFrames = 0;
-    int eapolFrames = 0;
-    int dataFrames = 0;
-    int managementFrames = 0;
-
-    while (file.available()) {
-        pcaprec_hdr_t header;
-        file.read((uint8_t*)&header, sizeof(pcaprec_hdr_t));
-
-        if (header.incl_len > 0) {
-            uint8_t* packet = new uint8_t[header.incl_len];
-            file.read(packet, header.incl_len);
-
-            // Parse packet
-            if (header.incl_len >= 24) {  // Minimum size for 802.11 header
-                uint8_t frameControl = packet[0];
-                uint8_t frameType = (frameControl & 0x0C) >> 2;
-                uint8_t frameSubType = (frameControl & 0xF0) >> 4;
-
-                // Count frame types
-                switch (frameType) {
-                    case 0: managementFrames++; break;  // Management
-                    case 1: break;  // Control
-                    case 2: dataFrames++; break;  // Data
-                }
-
-                // Extract addresses
-                uint8_t* addr1 = packet + 4;  // Destination
-                uint8_t* addr2 = packet + 10; // Source
-                uint8_t* addr3 = packet + 16; // BSSID
-
-                // Store unique MACs
-                char macStr[18];
-                snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
-                    addr2[0], addr2[1], addr2[2], addr2[3], addr2[4], addr2[5]);
-                uniqueClients.insert(macStr);
-
-                snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
-                    addr3[0], addr3[1], addr3[2], addr3[3], addr3[4], addr3[5]);
-                uniqueAPs.insert(macStr);
-
-                // Extract SSID from beacon frames
-                if (frameType == 0 && frameSubType == 0x08) {  // Beacon frame
-                    beaconFrames++;
-                    const uint8_t* ie = packet + 24;
-                    size_t remaining = header.incl_len - 24;
-
-                    while (remaining > 2) {
-                        uint8_t ie_id = ie[0];
-                        uint8_t ie_len = ie[1];
-
-                        if (ie_id == 0x00) {  // SSID IE
-                            char ssid[33] = {0};
-                            size_t ssid_len = std::min(static_cast<size_t>(ie_len), static_cast<size_t>(32));
-                            memcpy(ssid, ie + 2, ssid_len);
-                            apSSIDs[macStr] = ssid;
-                            break;
-                        }
-
-                        ie += 2 + ie_len;
-                        remaining -= 2 + ie_len;
-                    }
-                }
-
-                // Check for complete handshake
-                if (isItEAPOL((wifi_promiscuous_pkt_t*)packet)) {
-                    eapolFrames++;
-                    const uint8_t* key_frame = packet + 24 + 8;
-                    if (key_frame[0] == 0x02) {  // EAPOL Key frame
-                        uint16_t key_info = (key_frame[2] << 8) | key_frame[3];
-                        if ((key_info & 0x0080) && (key_info & 0x0100)) {  // Message 3 of 4
-                            apWithHandshake.insert(macStr);
-                        }
-                    }
-                }
-            }
-
-            delete[] packet;
-            totalPackets++;
-        }
-    }
-
-    file.close();
-
-    // Display results
-    drawMainBorderWithTitle("PCAP Analysis");
-    tft.setTextSize(FP);
-    tft.setTextColor(bruceConfig.priColor, bruceConfig.bgColor);
-
-    int y = 40;
-    tft.setCursor(10, y);
-    tft.println("File: " + String(filename));
-    y += 20;
-    tft.setCursor(10, y);
-    tft.println("Total Packets: " + String(totalPackets));
-    y += 20;
-    tft.setCursor(10, y);
-    tft.println("Unique APs: " + String(uniqueAPs.size()));
-    y += 20;
-    tft.setCursor(10, y);
-    tft.println("Unique Clients: " + String(uniqueClients.size()));
-    y += 20;
-    tft.setCursor(10, y);
-    tft.println("Beacon Frames: " + String(beaconFrames));
-    y += 20;
-    tft.setCursor(10, y);
-    tft.println("EAPOL Frames: " + String(eapolFrames));
-    y += 20;
-    tft.setCursor(10, y);
-    tft.println("Data Frames: " + String(dataFrames));
-    y += 20;
-    tft.setCursor(10, y);
-    tft.println("Management Frames: " + String(managementFrames));
-    y += 20;
-
-    // Display APs with their SSIDs
-    tft.setCursor(10, y);
-    tft.println("Access Points:");
-    y += 20;
-    for (const auto& ap : uniqueAPs) {
-        if (y > tftHeight - 40) break; // Prevent overflow
-        tft.setCursor(20, y);
-        tft.print(ap.c_str());
-        tft.print(": ");
-
-        // Set color based on handshake status
-        if (apWithHandshake.find(ap) != apWithHandshake.end()) {
-            tft.setTextColor(TFT_GREEN, bruceConfig.bgColor);
-        } else {
-            tft.setTextColor(bruceConfig.priColor, bruceConfig.bgColor);
-        }
-
-        auto it = apSSIDs.find(ap);
-        if (it != apSSIDs.end()) {
-            tft.println(it->second.c_str());
-        } else {
-            tft.println("<Hidden>");
-        }
-        y += 20;
-    }
-
-    // Reset text color
-    tft.setTextColor(bruceConfig.priColor, bruceConfig.bgColor);
-
-    // Wait for user input
-    while (!check(SelPress) && !check(EscPress)) {
-        delay(10);
-    }
-    while (check(SelPress) || check(EscPress)) {
-        delay(10);
-    }
-}
 
 //===== FUNCTIONS =====//
 
@@ -324,85 +95,76 @@ bool isItEAPOL(const wifi_promiscuous_pkt_t* packet) {
 
   return false;
 }
+// Définition de l'en-tête d'un paquet PCAP
+typedef struct pcaprec_hdr_s {
+  uint32_t ts_sec;         /* timestamp secondes */
+  uint32_t ts_usec;        /* timestamp microsecondes */
+  uint32_t incl_len;       /* nombre d'octets du paquet enregistrés dans le fichier */
+  uint32_t orig_len;       /* longueur réelle du paquet */
+} pcaprec_hdr_t;
 
 void saveHandshake(const wifi_promiscuous_pkt_t* packet, bool beacon, FS &Fs) {
-    const uint8_t *addr1 = packet->payload + 4;  // Destination
-    const uint8_t *addr2 = packet->payload + 10; // Source
-    const uint8_t *bssid = packet->payload + 16; // BSSID
-    const uint8_t *apAddr;
+  // Construire le nom du fichier en utilisant les adresses MAC de l'AP et du client
+  const uint8_t *addr1 = packet->payload + 4;  // Adresse du destinataire (Adresse 1)
+  const uint8_t *addr2 = packet->payload + 10; // Adresse de l'expéditeur (Adresse 2)
+  const uint8_t *bssid = packet->payload + 16; // Adresse BSSID (Adresse 3)
+  const uint8_t *apAddr;
 
-    if (memcmp(addr1, bssid, 6) == 0) {
-        apAddr = addr1;
-    } else {
-        apAddr = addr2;
-    }
+  if (memcmp(addr1, bssid, 6) == 0) {
+    apAddr = addr1;
+  } else {
+    apAddr = addr2;
+  }
 
-    // Check if this is a complete handshake
-    bool isCompleteHandshake = false;
-    if (!beacon) {
-        const uint8_t* key_frame = packet->payload + 24 + 8;
-        if (key_frame[0] == 0x02) {  // EAPOL Key frame
-            uint16_t key_info = (key_frame[2] << 8) | key_frame[3];
-            if ((key_info & 0x0080) && (key_info & 0x0100)) {  // Message 3 of 4
-                isCompleteHandshake = true;
-            }
-        }
-    }
+  char nomFichier[50];
+  sprintf(nomFichier, "/BrucePCAP/handshakes/HS_%02X%02X%02X%02X%02X%02X.pcap",
+          apAddr[0], apAddr[1], apAddr[2], apAddr[3], apAddr[4], apAddr[5]);
 
-    char nomFichier[60];  // Increased buffer size from 50 to 60
-    if (isCompleteHandshake) {
-        // For complete handshakes, use HS-COMPLETE prefix
-        sprintf(nomFichier, "/BrucePCAP/handshakes/HS-COMPLETE_%02X%02X%02X%02X%02X%02X.pcap",
-                apAddr[0], apAddr[1], apAddr[2], apAddr[3], apAddr[4], apAddr[5]);
-    } else {
-        // For regular handshakes, use HS prefix
-        sprintf(nomFichier, "/BrucePCAP/handshakes/HS_%02X%02X%02X%02X%02X%02X.pcap",
-                apAddr[0], apAddr[1], apAddr[2], apAddr[3], apAddr[4], apAddr[5]);
-    }
+  // Vérifier si le fichier existe déjà
+  bool fichierExiste = false;
 
-    // Check if the MAC Address was registered in the list
-    bool fichierExiste = false;
-    if(SavedHS.find(String((char*)apAddr, 6)) != SavedHS.end()) {
-        fichierExiste = true;
-    }
+  // Check if the MAC Address was registered in the list
+  if(SavedHS.find(String((char*)apAddr, 6)) != SavedHS.end()) {
+    fichierExiste=true;
+  }
 
-    // If probe is true and that the file doesn't exist, ignore the record
-    if (beacon && !fichierExiste) {
-        return;
-    }
+  // Si probe est true et que le fichier n'existe pas, ignorer l'enregistrement
+  if (beacon && !fichierExiste) {
+    return;
+  }
 
-    // Open file in append mode if existing, write mode if new
-    File fichierPcap = Fs.open(nomFichier, fichierExiste ? FILE_APPEND : FILE_WRITE);
-    if (!fichierPcap) {
-        Serial.println("Fail creating the EAPOL/Handshake PCAP file");
-        return;
-    }
+  // Ouvrir le fichier en mode ajout si existant sinon en mode écriture
+  File fichierPcap = Fs.open(nomFichier, fichierExiste ? FILE_APPEND : FILE_WRITE); // if the file already exists in the new session, will overwrite it
+  if (!fichierPcap) {
+    Serial.println("Fail creating the EAPOL/Handshake PCAP file");
+    return;
+  }
 
-    if (!beacon && !fichierExiste) {
-        Serial.println("New EAPOL/Handshake PCAP file, writing header");
-        SavedHS.insert(String((char*)apAddr, 6));
-        num_HS++;
-        writeHeader(fichierPcap);
+  if (!beacon && !fichierExiste) {
+    Serial.println("New EAPOL/Handshake PCAP file, writing header");
+    SavedHS.insert(String((char*)apAddr, 6));
+    num_HS++;
+    writeHeader(fichierPcap);
+  }
+  if (beacon && fichierExiste) {
+    BeaconList ThisBeacon;
+    memcpy(ThisBeacon.MAC,(char*)apAddr, 6);
+    ThisBeacon.channel=ch;
+    if (registeredBeacons.find(ThisBeacon) != registeredBeacons.end()) {
+      return; // Beacon déjà enregistré pour ce BSSID
     }
-    if (beacon && fichierExiste) {
-        BeaconList ThisBeacon;
-        memcpy(ThisBeacon.MAC,(char*)apAddr, 6);
-        ThisBeacon.channel=ch;
-        if (registeredBeacons.find(ThisBeacon) != registeredBeacons.end()) {
-            return; // Beacon already registered for this BSSID
-        }
-        registeredBeacons.insert(ThisBeacon);
-    }
+    registeredBeacons.insert(ThisBeacon); // Ajouter le BSSID à l'ensemble
+  }
 
-    // Write packet header and packet data
-    pcaprec_hdr_t pcap_packet_header;
-    pcap_packet_header.ts_sec = packet->rx_ctrl.timestamp / 1000000;
-    pcap_packet_header.ts_usec = packet->rx_ctrl.timestamp % 1000000;
-    pcap_packet_header.incl_len = packet->rx_ctrl.sig_len;
-    pcap_packet_header.orig_len = packet->rx_ctrl.sig_len;
-    fichierPcap.write((const byte*)&pcap_packet_header, sizeof(pcaprec_hdr_t));
-    fichierPcap.write(packet->payload, packet->rx_ctrl.sig_len);
-    fichierPcap.close();
+  // Écrire l'en-tête du paquet et le paquet lui-même dans le fichier
+  pcaprec_hdr_t pcap_packet_header;
+  pcap_packet_header.ts_sec = packet->rx_ctrl.timestamp / 1000000;
+  pcap_packet_header.ts_usec = packet->rx_ctrl.timestamp % 1000000;
+  pcap_packet_header.incl_len = packet->rx_ctrl.sig_len;
+  pcap_packet_header.orig_len = packet->rx_ctrl.sig_len;
+  fichierPcap.write((const byte*)&pcap_packet_header, sizeof(pcaprec_hdr_t));
+  fichierPcap.write(packet->payload, packet->rx_ctrl.sig_len);
+  fichierPcap.close();
 }
 
 void printAddress(const uint8_t* addr) {
@@ -457,63 +219,9 @@ bool writeHeader(File file){
   return false;
 }
 
-// Extract SSID from beacon frame
-bool extractSSID(const uint8_t* frame, size_t frame_len, AP_info* ap) {
-    const uint8_t* ie = frame + 24;
-    size_t remaining = frame_len - 24;
-
-    while (remaining > 2) {
-        uint8_t ie_id = ie[0];
-        uint8_t ie_len = ie[1];
-
-        if (ie_id == 0x00) {  // SSID IE
-            size_t ssid_len = std::min(static_cast<size_t>(ie_len), static_cast<size_t>(32));
-            memcpy(ap->essid, ie + 2, ssid_len);
-            ap->essid[ssid_len] = '\0';
-            ap->essid_len = ssid_len;
-            return true;
-        }
-
-        ie += 2 + ie_len;
-        remaining -= 2 + ie_len;
-    }
-    return false;
-}
-
-// Check if SSID is hidden
-bool isHiddenSSID(const uint8_t* frame, size_t frame_len) {
-    const uint8_t* ie = frame + 24;
-    if (ie[0] == 0x00 && ie[1] == 0x00) {
-        return true;
-    }
-    return false;
-}
-
-// Get handshake message number
-uint8_t getHandshakeMessageNumber(const uint8_t* eapol_frame) {
-    const uint8_t* key_frame = eapol_frame + 24 + 8;
-
-    if (key_frame[0] != 0x02) return 0;
-
-    uint16_t key_info = (key_frame[2] << 8) | key_frame[3];
-
-    if (key_info & 0x0080) {
-        if (key_info & 0x0100) {
-            return 3;
-        } else {
-            return 1;
-        }
-    } else {
-        if (key_info & 0x0100) {
-            return 4;
-        } else {
-            return 2;
-        }
-    }
-}
-
 /* will be executed on every packet the ESP32 gets while beeing in promiscuous mode */
 void sniffer(void *buf, wifi_promiscuous_pkt_type_t type){
+  // If using LittleFS to save .pcaps and there's no room for data, don't do anything whith new packets
   if(isLittleFS && !checkLittleFsSizeNM()) {
     returnToMenu = true;
     esp_wifi_set_promiscuous(false);
@@ -567,43 +275,6 @@ void sniffer(void *buf, wifi_promiscuous_pkt_type_t type){
     else saveHandshake(pkt, true, SD);
   }
 
-  // Handle beacon frames
-  if (frame[0] == 0x80) {
-    AP_info ap;
-    memset(&ap, 0, sizeof(AP_info));
-
-    // Extract BSSID
-    memcpy(ap.bssid, frame + 10, 6);
-    ap.channel = ch;
-    ap.power = pkt->rx_ctrl.rssi;
-    ap.last_seen = millis();
-
-    // Extract SSID
-    if (extractSSID(frame, pkt->rx_ctrl.sig_len, &ap)) {
-      if (!isHiddenSSID(frame, pkt->rx_ctrl.sig_len)) {
-        Serial.printf("AP: %s (BSSID: %02X:%02X:%02X:%02X:%02X:%02X)\n",
-          ap.essid,
-          ap.bssid[0], ap.bssid[1], ap.bssid[2],
-          ap.bssid[3], ap.bssid[4], ap.bssid[5]);
-      }
-
-      // Save beacon if needed
-      if (!ap.beacon_logged) {
-        if(isLittleFS) saveHandshake(pkt, true, LittleFS);
-        else saveHandshake(pkt, true, SD);
-        ap.beacon_logged = true;
-      }
-    }
-
-    // Update or add AP to set
-    auto it = std::find_if(registeredAPs.begin(), registeredAPs.end(),
-      [&ap](const AP_info& x) { return memcmp(x.bssid, ap.bssid, 6) == 0; });
-
-    if (it != registeredAPs.end()) {
-      registeredAPs.erase(it);
-    }
-    registeredAPs.insert(ap);
-  }
 }
 
 //esp_err_t event_handler(void *ctx, system_event_t *event){ return ESP_OK; }
